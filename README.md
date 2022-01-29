@@ -1,2 +1,2 @@
 # multi_label
-help me to train my code ability
+help me to improve my code ability
