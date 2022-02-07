@@ -131,7 +131,10 @@ class broadnet:
     def fit(self,data,label):
         if self._batchsize == 'auto':
             self._batchsize = data.shape[1]
-        label=label.toarray()
+        if (type(label)is np.ndarray):
+            {}
+        else:
+            label=label.toarray()
         data = self.normalscaler.fit_transform(data)
         # label = self.onehotencoder.fit_transform(np.mat(label).T)
         
