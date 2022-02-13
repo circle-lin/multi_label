@@ -13,10 +13,7 @@ import scipy.io as sio
 from sklearn.metrics import accuracy_score,hamming_loss,f1_score
 
 '''
-这个版本的主要不同是可以处理普通的多标签数据集，只要将bls进行实例化，进而进行fit，那么就可以得到中间层到输出层的权重w，
-此时新样本计算得到输出层值，若大于阈值，则给标记为1，反之为0；
-目前改进的思路是先把数据集变换为{-1,1}类型，进一步针对每一个标签都训练得到一个阈值
-不过仍需进一步探讨阈值需要怎么确定。
+这个版本主要将训练集中分出一部分用于阈值设置，不用另外进行修改alpha操作
 '''
 
 def show_accuracy(predictLabel,Label):
@@ -97,10 +94,10 @@ class scaler:
         self._std = 0
     
     def fit_transform(self,traindata):
-        if (type(traindata)is np.ndarray):
-            {}
-        else:
-            traindata=traindata.toarray()
+        # if (type(traindata)is np.ndarray):
+        #     {}
+        # else:
+        #     traindata=traindata.toarray()
         self._mean = traindata.mean(axis = 0)
         self._std = traindata.std(axis = 0)
         # self._mean = np.mean(traindata,axis=0)
@@ -133,7 +130,7 @@ class broadnet:
         self.onehotencoder = preprocessing.OneHotEncoder(sparse = False)
         self.mapping_generator = node_generator()
         self.enhence_generator = node_generator(whiten = True)
-        self.alpha=0.5
+        self.alpha=[]
 
     def fit(self,data,label):
         if self._batchsize == 'auto':
@@ -142,8 +139,18 @@ class broadnet:
             {}
         else:
             label=label.toarray()
+        if (type(data)is np.ndarray):
+            {}
+        else:
+            data=data.toarray()
+
+        data,X_alpha,label,y_alpha=train_test_split(data,label,test_size=0.05)
         data = self.normalscaler.fit_transform(data)
+        self.alpha=[]
+        for i in range(label.shape[1]):
+            self.alpha.append(0.5)
         # label = self.onehotencoder.fit_transform(np.mat(label).T)
+
         
         mappingdata = self.mapping_generator.generator_nodes(data,self._maptimes,self._batchsize,self._map_function)
         enhencedata = self.enhence_generator.generator_nodes(mappingdata,self._enhencetimes,self._batchsize,self._enhence_function)
@@ -157,7 +164,7 @@ class broadnet:
         self.W =  pesuedoinverse.dot(label)
         #在此处输出是为了确定训练数据得到隐含层和输入层组成的中间层再乘以W，是否变成{0,1}
         # print(inputdata.dot(self.W))
-
+        self.decoder_alpha(X_alpha, y_alpha)
 
             
     def pinv(self,A,reg):
@@ -170,19 +177,20 @@ class broadnet:
 
         test_inputdata = np.column_stack((test_mappingdata, test_enhencedata))
         threshold = [i for i in np.arange(0.1, 0.9, 0.01)]
+        for j in range(y_true.shape[1]):
 
-        score = []
-        for i in range(len(threshold)):
-            Y_onehot = test_inputdata.dot(self.W)
-            Y_onehot[Y_onehot < threshold[i]] = 0
-            Y_onehot[Y_onehot >= threshold[i]] = 1
-            num = f1_score(Y_onehot, y_true,average='micro')
-            # num = accuracy_score(Y_onehot, y_true)
-            score.append(num)
-        print(score)
-        index = np.argmax(score)
-        self.alpha = threshold[index]
-        print("The best threshold is {0}".format(self.alpha))
+            score = []
+            for i in range(len(threshold)):
+                Y_onehot = test_inputdata.dot(self.W)
+                Y_onehot[Y_onehot < threshold[i]] = 0
+                Y_onehot[Y_onehot >= threshold[i]] = 1
+                num = f1_score(Y_onehot[:,j], y_true[:,j],average='micro')
+                # num = accuracy_score(Y_onehot, y_true)
+                score.append(num)
+            # print(score)
+            index = np.argmax(score)
+            self.alpha[j] = threshold[index]
+            # print("The best threshold is {0}".format(self.alpha))
 
     
     def decode(self,Y_onehot):
@@ -192,9 +200,14 @@ class broadnet:
         #     Y.append(lis.index(max(lis)))
         # return np.array(Y)
         # Y_onehot=np.ndarray(Y_onehot)
-
-        Y_onehot[Y_onehot<self.alpha]=0
-        Y_onehot[Y_onehot>= self.alpha] = 1
+        # print(Y_onehot)
+        # print("阈值为：",self.alpha)
+        for j in range(Y_onehot.shape[1]):
+            for i in range(Y_onehot.shape[0]):
+                if(Y_onehot[i,j]>=self.alpha[j]):
+                    Y_onehot[i,j]=1
+                else:
+                    Y_onehot[i,j]=0
         return Y_onehot
     
     def accuracy(self,predictlabel,label):
